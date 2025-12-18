@@ -78,7 +78,7 @@ export default function Home() {
   };
 
   return (
-    <div className="h-screen flex flex-col items-center justify-center p-4 bg-gradient-to-br from-[#667eea] to-[#764ba2] overflow-hidden">
+    <div className="h-[100dvh] flex flex-col items-center justify-center p-4 bg-gradient-to-br from-[#667eea] to-[#764ba2] overflow-hidden">
       <h1 className="text-white mb-2 md:mb-4 text-2xl md:text-3xl font-bold drop-shadow-lg flex-shrink-0">
         Unicode Gacha
       </h1>
