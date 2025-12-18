@@ -1,5 +1,13 @@
 // Unicode data handling classes - TypeScript version
 // Adapted from unicode.js for Next.js
+interface CJKReading {
+    field: string;
+    text: string;
+}
+
+interface CJKData {
+    readings: CJKReading[];
+}
 
 interface CodePointData {
     id: number;
@@ -19,18 +27,30 @@ interface CodePointData {
     simple_titlecase_mapping: string;
 }
 
+interface BlockData {
+    id: number;
+    start: number;
+    end: number;
+    name: string;
+    color: string;
+}
+
 interface PoolItem {
     id: number;
     name: string;
     description: string;
     char: string;
+    blockName: string;
+    blockColor: string;
     weight: number;
 }
 
 export class UnicodeData {
     private data: { [key: number]: CodePointData } = {};
+    private blocks: BlockData[] = [];
+    private cjkData: { [key: number]: CJKData } = {};
 
-    parseLine(line: string): CodePointData {
+    parseCodePoint(line: string): CodePointData {
         const codePointList = line.split(";");
         const codePointData: CodePointData = {
             id: parseInt(codePointList[0], 16),
@@ -50,6 +70,79 @@ export class UnicodeData {
             simple_titlecase_mapping: codePointList[14],
         };
         return codePointData;
+    }
+
+    parseBlock(line: string): BlockData {
+        const blockList = line.split(";");
+        const blockRange = blockList[0].split("..");
+        const blockStart = parseInt(blockRange[0], 16);
+        const blockEnd = parseInt(blockRange[1], 16);
+        const blockName = blockList[1];
+        return { id: 0, start: blockStart, end: blockEnd, name: blockName, color: "" };
+    }
+
+    parseCJKReading(line: string): {id: number, reading: CJKReading} {
+        const cjkReadingList = line.split("\t");
+        const codePoint = parseInt(cjkReadingList[0].replace("U+", ""), 16);
+        const field = cjkReadingList[1];
+        const text = cjkReadingList[2];
+        return { id: codePoint, reading: { field: field, text: text } };
+    }
+
+    async loadBlocks(): Promise<void> {
+        this.blocks = [];
+        let fileContent: string;
+        if (typeof window === 'undefined') {
+            // Server-side (Node.js) environment
+            const fs = await import('fs');
+            const path = await import('path');
+            const filePath = path.join(process.cwd(), 'public', 'data', 'Blocks.txt');
+            fileContent = fs.readFileSync(filePath, "utf-8");
+        } else {
+            // Client-side (browser) environment
+            const response = await fetch("/data/Blocks.txt");
+            fileContent = await response.text();
+        }
+        const lines = fileContent.split("\n");
+        let blockID = 0;
+        for (const line of lines) {
+            if (line.startsWith("#") || line.trim() === "") {
+                continue;
+            }
+            const blockData = this.parseBlock(line);
+            // color from name hash)
+            const mod = (n: number, m: number) => (n % m + m) % m;
+            const color = `#${mod(blockData.name.split("").reduce((hash: number, char: string) => {
+                return ((hash << 5) - hash) + char.charCodeAt(0);
+            }, 0), 0xFFFFFF).toString(16).padStart(6, '0')}`;
+            this.blocks.push({ ...blockData, id: blockID, color: color });
+            blockID++;
+        }
+    }
+
+    async loadCJKData(): Promise<void> {
+        this.cjkData = {};
+        let fileContent: string;
+        if (typeof window === 'undefined') {
+            const fs = await import('fs');
+            const path = await import('path');
+            const filePath = path.join(process.cwd(), 'public', 'data', 'CJKData.txt');
+            fileContent = fs.readFileSync(filePath, "utf-8");
+        } else {
+            const response = await fetch("/data/Unihan/Unihan_Readings.txt");
+            fileContent = await response.text();
+        }
+        const lines = fileContent.split("\n");
+        for (const line of lines) {
+            if (line.startsWith("#") || line.trim() === "") {
+                continue;
+            }
+            const { id, reading } = this.parseCJKReading(line);
+            if (!(id in this.cjkData)) {
+                this.cjkData[id] = { readings: [] };
+            }
+            this.cjkData[id].readings.push(reading);
+        }
     }
 
     getHangulSyllableName(id: number): string {
@@ -98,7 +191,7 @@ export class UnicodeData {
             if (line.startsWith("#")) {
                 continue;
             }
-            const codePointData = this.parseLine(line);
+            const codePointData = this.parseCodePoint(line);
             if (codePointData.id < rangeStart || codePointData.id > rangeEnd) {
                 continue;
             }
@@ -131,6 +224,25 @@ export class UnicodeData {
             return null;
         }
         return this.data[id];
+    }
+
+    getBlock(codePoint: number): BlockData | null {
+        if (this.blocks.length === 0) {
+            return null;
+        }
+        for (const block of this.blocks) {
+            if (codePoint >= block.start && codePoint <= block.end) {
+                return block;
+            }
+        }
+        return null;
+    }
+
+    getCJKReading(id: number): CJKReading[] {
+        if (!(id in this.cjkData)) {
+            return [];
+        }
+        return this.cjkData[id].readings;
     }
 }
 
@@ -195,10 +307,14 @@ export class UnicodeBMPPool extends Pool {
         // Build the pool items
         for (let id = 0; id < 65536; id++) {
             const codePointData = this.unicodeData.getCodePoint(id);
+            const block = this.unicodeData.getBlock(id);
             if (codePointData === null) {
                 continue;
             }
-            this.addItem({ id: id, name: codePointData.name, description: "", char: String.fromCharCode(id), weight: 1 });
+            const cjkReadings = this.unicodeData.getCJKReading(id);
+            let description = `Block: ${block?.name || "Unknown"}`
+            description += `\n${cjkReadings.map(reading => `${reading.field.slice(1)}: ${reading.text}`).join("\n")}`;
+            this.addItem({ id: id, name: codePointData.name, description: description, blockName: block?.name || "", blockColor: block?.color || "#ffffff", char: String.fromCharCode(id), weight: 1 });
         }
     }
 }
@@ -207,6 +323,8 @@ export class UnicodeBMPPool extends Pool {
 export async function initUnicodeData(): Promise<UnicodeData> {
     unicodeData = new UnicodeData();
     await unicodeData.addUnicodeData(0, 65535);
+    await unicodeData.loadBlocks();
+    await unicodeData.loadCJKData();
     return unicodeData;
 }
 
