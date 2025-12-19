@@ -37,12 +37,16 @@ interface BlockData {
 
 interface PoolItem {
     id: number;
+    weight: number;
+}
+
+interface CardData {
+    id: number;
     name: string;
     description: string;
     char: string;
     blockName: string;
     blockColor: string;
-    weight: number;
 }
 
 export class UnicodeData {
@@ -244,10 +248,49 @@ export class UnicodeData {
         }
         return this.cjkData[id].readings;
     }
+
+    getCardData(id: number): CardData | null {
+        const codePointData = this.getCodePoint(id);
+        if (codePointData === null) {
+            return null;
+        }
+        const cjkReadings = this.getCJKReading(id);
+        let description = `Name: ${codePointData.name}`;
+        const block = this.getBlock(id);
+        description += `\nBlock: ${block?.name || "Unknown"}`
+        description += `\n${cjkReadings.map(reading => `${reading.field.slice(1)}: ${reading.text}`).join("\n")}`;
+        return { id: id,
+            name: codePointData.name,
+            description: description,
+            char: String.fromCharCode(id),
+            blockName: block?.name || "",
+            blockColor: block?.color || "#ffffff"
+        };
+    }
 }
 
 export class Pool {
     protected items: PoolItem[] = [];
+    protected unicodeData: UnicodeData;
+    protected unicodeDataInitialized: boolean = false;
+
+    constructor(unicodeDataParam?: UnicodeData) {
+        // Reference the module-level unicodeData variable (like Python does)
+        if (unicodeDataParam === undefined) {
+            if (unicodeData === undefined || unicodeData === null) {
+                this.unicodeData = new UnicodeData();
+                // Note: addUnicodeData is now async, so initialization must be awaited
+                this.unicodeDataInitialized = false;
+            } else {
+                this.unicodeData = unicodeData;
+                this.unicodeDataInitialized = true;
+            }
+        } else {
+            this.unicodeData = unicodeDataParam;
+            this.unicodeDataInitialized = true;
+        }
+        // Items will be added after initialization
+    }
 
     addItem(item: PoolItem): void {
         this.items.push(item);
@@ -271,50 +314,31 @@ export class Pool {
         }
         return results;
     }
+
+    drawCard(amount: number = 1): CardData[] {
+        const results = this.draw(amount);
+        return results.map(item => this.unicodeData.getCardData(item.id) as CardData);
+    }
 }
 
 // Define unicodeData at module level first (using let so it can be referenced)
 let unicodeData: UnicodeData | undefined;
 
 export class UnicodeBMPPool extends Pool {
-    private unicodeData: UnicodeData;
-    private unicodeDataInitialized: boolean = false;
-
-    constructor(unicodeDataParam?: UnicodeData) {
-        super();
-        // Reference the module-level unicodeData variable (like Python does)
-        if (unicodeDataParam === undefined) {
-            if (unicodeData === undefined || unicodeData === null) {
-                this.unicodeData = new UnicodeData();
-                // Note: addUnicodeData is now async, so initialization must be awaited
-                this.unicodeDataInitialized = false;
-            } else {
-                this.unicodeData = unicodeData;
-                this.unicodeDataInitialized = true;
-            }
-        } else {
-            this.unicodeData = unicodeDataParam;
-            this.unicodeDataInitialized = true;
-        }
-        // Items will be added after initialization
-    }
 
     async initialize(): Promise<void> {
-        if (!this.unicodeDataInitialized) {
-            await this.unicodeData.addUnicodeData(0, 65535);
-            this.unicodeDataInitialized = true;
-        }
         // Build the pool items
         for (let id = 0; id < 65536; id++) {
             const codePointData = this.unicodeData.getCodePoint(id);
-            const block = this.unicodeData.getBlock(id);
+            // const block = this.unicodeData.getBlock(id);
             if (codePointData === null) {
                 continue;
             }
-            const cjkReadings = this.unicodeData.getCJKReading(id);
-            let description = `Block: ${block?.name || "Unknown"}`
-            description += `\n${cjkReadings.map(reading => `${reading.field.slice(1)}: ${reading.text}`).join("\n")}`;
-            this.addItem({ id: id, name: codePointData.name, description: description, blockName: block?.name || "", blockColor: block?.color || "#ffffff", char: String.fromCharCode(id), weight: 1 });
+            // const cjkReadings = this.unicodeData.getCJKReading(id);
+            // let description = `Name: ${codePointData.name}`;
+            // description += `\nBlock: ${block?.name || "Unknown"}`
+            // description += `\n${cjkReadings.map(reading => `${reading.field.slice(1)}: ${reading.text}`).join("\n")}`;
+            this.addItem({ id: id, weight: 1 });
         }
     }
 }

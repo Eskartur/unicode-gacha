@@ -52,11 +52,11 @@ export default function Home() {
     console.log(randomDisplay);
     for (let i = 0; i < 50; i++) {
       await new Promise(resolve => setTimeout(resolve, 40));
-      setCharacter(randomDisplay[i].char);
+      setCharacter(String.fromCharCode(randomDisplay[i].id));
     }
     
     // Draw from pool
-    const result = pool.draw()[0];
+    const result = pool.drawCard()[0];
     
     if (result) {
       // Display the result
@@ -97,7 +97,10 @@ export default function Home() {
           
           {/* Middle section: Character display (takes remaining space above description) */}
           <div
-            className="text-[120px] md:text-[160px] leading-none flex-1 flex items-center justify-center border-[10px] rounded-2xl bg-gray-50 mb-2 transition-all duration-300 min-h-0 aspect-[1/1] border-gray-300 flex-shrink-0"
+            className="text-[120px] md:text-[160px] leading-none flex-1 flex
+            items-center justify-center border-[10px] rounded-2xl bg-gray-50
+            mb-2 transition-all duration-300 min-h-0 aspect-[1/1] border-gray-300
+            flex-shrink-0 text-black"
           >
             {character}
           </div>
